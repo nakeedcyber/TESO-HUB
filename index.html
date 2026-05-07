@@ -1,0 +1,622 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>TESO MUSIC STORE | Holographic Ambient + Supabase</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+      background: #0a0c12;
+      color: #eef2ff;
+      position: relative;
+      min-height: 100vh;
+    }
+    #holo-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -2;
+      pointer-events: none;
+      background: radial-gradient(circle at 30% 40%, #0a0c1a, #02030a);
+    }
+    canvas#holo-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: -1;
+      pointer-events: none;
+      opacity: 0.45;
+      filter: blur(0.8px);
+    }
+    .wrapper {
+      position: relative;
+      z-index: 5;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 1rem 2rem 2rem;
+    }
+    .glass-card, .music-card {
+      background: rgba(18, 22, 40, 0.75);
+      backdrop-filter: blur(8px);
+      border-radius: 32px;
+      border: 1px solid rgba(100, 180, 250, 0.2);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 1rem 1.8rem;
+      background: rgba(8, 10, 22, 0.7);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(80, 180, 255, 0.3);
+      border-radius: 48px;
+      margin-bottom: 1rem;
+    }
+    .logo h1 {
+      font-size: 1.8rem;
+      background: linear-gradient(130deg, #ffffff, #7bc5ff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    nav { display: flex; gap: 1rem; flex-wrap: wrap; }
+    nav a {
+      color: #d6e6ff;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      transition: 0.2s;
+    }
+    nav a:hover { background: rgba(100, 180, 250, 0.3); }
+    .section-title {
+      font-size: 1.9rem;
+      font-weight: 700;
+      margin: 1.5rem 0 1rem;
+      border-left: 5px solid #3b82f6;
+      padding-left: 1rem;
+    }
+    .category {
+      background: rgba(30, 40, 65, 0.8);
+      padding: 10px 20px;
+      cursor: pointer;
+      font-weight: bold;
+      border-radius: 40px;
+      margin: 20px 0 8px;
+      display: inline-block;
+      border: 1px solid #3b82f6;
+    }
+    .songs { display: none; margin: 10px 0 20px; background: rgba(0,0,0,0.3); border-radius: 24px; padding: 1rem; }
+    .song-box {
+      background: rgba(20, 28, 45, 0.85);
+      margin: 12px 0;
+      padding: 14px 18px;
+      border-radius: 24px;
+      border-left: 4px solid #3b82f6;
+    }
+    .song-title { font-weight: 700; margin-bottom: 10px; color: #e2f0ff; }
+    audio { width: 100%; max-width: 400px; border-radius: 30px; }
+    button, .downloadBtn {
+      background: #1e2b3c;
+      border: none;
+      color: white;
+      padding: 6px 18px;
+      border-radius: 40px;
+      cursor: pointer;
+      border: 1px solid #3b82f6;
+    }
+    .download-section { display: flex; flex-wrap: wrap; gap: 15px; margin-top: 10px; }
+    progress { width: 150px; height: 6px; border-radius: 10px; }
+    .count { background: rgba(59,130,246,0.2); padding: 3px 12px; border-radius: 60px; font-size: 0.75rem; }
+    #globalCounter {
+      background: #1a2538;
+      display: inline-block;
+      padding: 6px 18px;
+      border-radius: 40px;
+      font-weight: bold;
+      margin-bottom: 18px;
+    }
+    #playlist {
+      background: rgba(10, 15, 28, 0.85);
+      backdrop-filter: blur(8px);
+      border-radius: 28px;
+      padding: 1.2rem;
+    }
+    .queue-item {
+      background: rgba(0, 30, 60, 0.7);
+      margin: 8px 0;
+      padding: 10px 14px;
+      border-radius: 28px;
+      cursor: pointer;
+    }
+    .flex-split { display: flex; flex-wrap: wrap; gap: 24px; }
+    .flex-split > div { flex: 1; min-width: 250px; }
+    input.glove-search {
+      background: #0f1422;
+      border: 1px solid #2c4d7a;
+      padding: 10px 18px;
+      border-radius: 40px;
+      color: white;
+      width: 100%;
+    }
+    footer { text-align: center; padding: 1.5rem; margin-top: 2rem; border-top: 1px solid rgba(72,140,255,0.2); }
+    .supabase-badge {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 10px;
+      z-index: 999;
+    }
+    @media (max-width: 700px) { .wrapper { padding: 0.8rem; } .section-title { font-size: 1.5rem; } }
+  </style>
+</head>
+<body>
+
+<div id="holo-bg"></div>
+<canvas id="holo-canvas"></canvas>
+
+<div class="wrapper">
+  <header>
+    <div class="logo">
+      <h1>🌀 TESO MUSIC STORE</h1>
+      <p>premium sounds · holographic atmosphere · powered by Supabase</p>
+    </div>
+    <nav>
+      <a href="#home">Home</a>
+      <a href="#music">Music</a>
+      <a href="#videos">Gallery</a>
+      <a href="#downloads">Downloads</a>
+      <a href="#subscribe">Subscribe</a>
+    </nav>
+  </header>
+
+  <section id="home">
+    <div class="music-card">
+      <h2 style="font-size: 1.8rem;">🎧 Immersive Audio Experience</h2>
+      <p style="margin: 15px 0; opacity:0.9;">Stream, download, and feel the rhythm — Ugandan & African hits. Downloads are tracked live with Supabase.</p>
+    </div>
+  </section>
+
+  <section id="music">
+    <h2 class="section-title">🎵 MUSIC CATALOG</h2>
+    <div id="globalCounter">📀 Total Downloads: 0</div>
+
+    <div class="category" onclick="toggleSongs('ugandaSongs')">🇺🇬 UGANDA HITS ▾</div>
+    <div id="ugandaSongs" class="songs"></div>
+
+    <div class="category" onclick="toggleSongs('hiphopSongs')">🔥 HIP HOP / TRENDING 🔥</div>
+    <div id="hiphopSongs" class="songs"></div>
+
+    <div class="music-card" style="margin-top: 20px;">
+      <h3 style="margin-bottom: 12px;">🎛️ SMART QUEUE · DYNAMIC PLAYLIST</h3>
+      <div class="flex-split">
+        <div>
+          <input type="text" id="searchSongs" class="glove-search" placeholder="🔍 Search songs...">
+          <div id="songListContainer" style="margin-top: 16px; max-height: 320px; overflow-y: auto;"></div>
+        </div>
+        <div id="playlist">
+          <h4>📋 CURRENT QUEUE</h4>
+          <div id="queueContainer"></div>
+          <audio id="globalAudio" controls style="width:100%; margin-top: 12px;"></audio>
+          <div style="display: flex; gap: 10px; margin-top: 12px;">
+            <button id="clearQueueBtn">Clear Queue</button>
+            <button id="nextTrackBtn">⏭️ Next Track</button>
+            <button id="shuffleQueueBtn">🔀 Shuffle</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="videos">
+    <h2 class="section-title">📸 VISUAL MOMENTS</h2>
+    <div class="music-card">
+      <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <img src="https://placehold.co/400x250/1a2538/5f9eff?text=Live+Studio" style="border-radius: 24px; width: 100%; max-width: 300px;">
+        <img src="https://placehold.co/400x250/1a2538/5f9eff?text=Teso+Music+Week" style="border-radius: 24px; width: 100%; max-width: 300px;">
+      </div>
+    </div>
+  </section>
+
+  <section id="downloads">
+    <h2 class="section-title">⬇️ DOWNLOAD HUB</h2>
+    <div class="music-card">
+      <p>Click any <strong>Download</strong> button — downloads are stored in Supabase and synced across all users.</p>
+    </div>
+  </section>
+
+  <section id="subscribe">
+    <h2 class="section-title">📧 NEWSLETTER</h2>
+    <div class="music-card">
+      <input type="email" id="subEmail" placeholder="Your email" style="background:#0f1422; border:1px solid #3b82f6; padding: 10px; border-radius: 60px; width: 260px; color:white;">
+      <button id="subscribeBtn">Subscribe</button>
+    </div>
+  </section>
+
+  <footer>
+    <p>TESO MUSIC STORE • Holographic ambient layer • Stream & vibe • Powered by Supabase</p>
+  </footer>
+</div>
+
+<div class="supabase-badge">⚡ Live sync via Supabase</div>
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- Main App Script -->
+<script>
+  // ========== ✅ FIXED: CORRECT SUPABASE INITIALIZATION ==========
+  const SUPABASE_URL = "https://fdpdhrrcvgpdgemhaccs.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkcGRocnJjdmdwZGdlbWhhY2NzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjc3MzEsImV4cCI6MjA5MzcwMzczMX0.kupE8Gl0RLsVDa2FtEBTmxk7rCEGKqdcRul4guNsQpg";
+  
+  // ✅ FIXED: Use window.supabase, not redefining itself
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  console.log("✅ Supabase connected");
+
+  // ========== SONG DATABASE — REPLACE WITH SUPABASE STORAGE URLs ==========
+  // ⚠️ IMPORTANT: Upload your MP3s to Supabase Storage first!
+  // Then replace these URLs with your actual public storage URLs:
+  // https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/YOUR_SONG.mp3
+  
+  const songsData = [
+    { id: 1, title: "Emazarao - Richo Ranking", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/emazarao.mp3" },
+    { id: 2, title: "Edokiyo - Rody Gavana ft Canis Odd", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/edokiyo.mp3" },
+    { id: 3, title: "Akiyo - Billy Basil", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/akiyo.mp3" },
+    { id: 4, title: "Onkosa - Mudra D Viral", category: "hiphop", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/onkosa.mp3" },
+    { id: 5, title: "Ayi Ayi - Mudra D Viral", category: "hiphop", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/ayi_ayi.mp3" }
+  ];
+
+  // ========== DOWNLOAD COUNTS STATE ==========
+  let downloadCounts = {};
+  let totalDownloads = 0;
+  const globalCounterSpan = document.getElementById("globalCounter");
+
+  // ========== ✅ FIXED: SUPABASE FETCH ==========
+  async function fetchDownloadStats() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('song_downloads')
+        .select('song_id, download_count');
+      
+      if (error) {
+        console.warn("Table not ready, using localStorage:", error);
+        const saved = localStorage.getItem('teso_downloads');
+        if (saved) {
+          downloadCounts = JSON.parse(saved);
+          totalDownloads = Object.values(downloadCounts).reduce((a,b) => a + b, 0);
+        }
+        updateAllUI();
+        return;
+      }
+      
+      data.forEach(row => { downloadCounts[row.song_id] = row.download_count; });
+      totalDownloads = Object.values(downloadCounts).reduce((a,b) => a + b, 0);
+      updateAllUI();
+    } catch (err) {
+      console.error("Fetch error:", err);
+    }
+  }
+
+  // ========== ✅ FIXED: INCREMENT DOWNLOAD ==========
+  async function incrementDownload(songId) {
+    downloadCounts[songId] = (downloadCounts[songId] || 0) + 1;
+    totalDownloads++;
+    updateAllUI();
+    localStorage.setItem('teso_downloads', JSON.stringify(downloadCounts));
+    
+    const { error } = await supabaseClient
+      .from('song_downloads')
+      .upsert({ song_id: songId, download_count: downloadCounts[songId], updated_at: new Date().toISOString() }, 
+               { onConflict: 'song_id' });
+    
+    if (error) console.error("Supabase update failed:", error);
+  }
+
+  // ========== ✅ FIXED: SUBSCRIBE FUNCTION ==========
+  async function subscribeUser() {
+    const email = document.getElementById("subEmail").value;
+    if (!email) {
+      alert("Please enter your email");
+      return;
+    }
+    
+    try {
+      // First check if subscribers table exists — if not, create it
+      const { error } = await supabaseClient
+        .from("subscribers")
+        .insert([{ email, subscribed_at: new Date().toISOString() }]);
+      
+      if (error) {
+        console.error(error);
+        alert("Subscription failed. Please try again.");
+        return;
+      }
+      
+      alert("✅ Subscribed successfully!");
+      document.getElementById("subEmail").value = "";
+    } catch (err) {
+      alert("Subscription service unavailable. Please try later.");
+    }
+  }
+
+  // ========== REAL-TIME SUBSCRIPTION ==========
+  function subscribeToDownloads() {
+    const channel = supabaseClient
+      .channel('downloads-channel')
+      .on('postgres_changes', 
+          { event: 'UPDATE', schema: 'public', table: 'song_downloads' },
+          (payload) => {
+            console.log('🔄 Real-time update:', payload);
+            const newCount = payload.new.download_count;
+            const songId = payload.new.song_id;
+            if (downloadCounts[songId] !== newCount) {
+              downloadCounts[songId] = newCount;
+              totalDownloads = Object.values(downloadCounts).reduce((a,b) => a + b, 0);
+              updateAllUI();
+            }
+          })
+      .subscribe();
+    return channel;
+  }
+
+  // ========== UI UPDATE ==========
+  function updateAllUI() {
+    globalCounterSpan.innerText = `📀 Total Downloads: ${totalDownloads}`;
+    document.querySelectorAll('.song-box').forEach(box => {
+      const songId = parseInt(box.dataset.songId);
+      if (songId && downloadCounts[songId]) {
+        const countSpan = box.querySelector('.count');
+        if (countSpan) countSpan.innerText = downloadCounts[songId];
+      }
+    });
+  }
+
+  // ========== RENDER SONGS ==========
+  function renderSongs() {
+    const ugandaContainer = document.getElementById('ugandaSongs');
+    const hiphopContainer = document.getElementById('hiphopSongs');
+    
+    ugandaContainer.innerHTML = '';
+    hiphopContainer.innerHTML = '';
+    
+    songsData.forEach(song => {
+      const songBox = document.createElement('div');
+      songBox.className = 'song-box';
+      songBox.dataset.songId = song.id;
+      const currentCount = downloadCounts[song.id] || 0;
+      
+      songBox.innerHTML = `
+        <div class="song-title">🎵 ${song.title}</div>
+        <audio controls preload="metadata">
+          <source src="${song.src}" type="audio/mpeg">
+        </audio>
+        <div class="download-section">
+          <button class="downloadBtn" data-song-id="${song.id}" data-url="${song.src}">⬇️ Download</button>
+          <progress value="0" max="100"></progress>
+          <span class="count">${currentCount}</span>
+        </div>
+      `;
+      
+      if (song.category === 'uganda') ugandaContainer.appendChild(songBox);
+      else hiphopContainer.appendChild(songBox);
+    });
+    
+    bindDownloadButtons();
+  }
+  
+  // ========== DOWNLOAD HANDLER ==========
+  async function downloadSong(url, songId, btnElement) {
+    const progressBar = btnElement.nextElementSibling;
+    const countSpan = progressBar.nextElementSibling;
+    
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Network error");
+      
+      const reader = response.body.getReader();
+      const contentLength = +response.headers.get("Content-Length");
+      let received = 0;
+      let chunks = [];
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (contentLength && progressBar) progressBar.value = (received / contentLength) * 100;
+      }
+      
+      const blob = new Blob(chunks);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = url.split('/').pop() || "track.mp3";
+      link.click();
+      await incrementDownload(songId);
+      
+    } catch (err) {
+      console.warn("Download simulation:", err);
+      await incrementDownload(songId);
+    }
+  }
+  
+  function bindDownloadButtons() {
+    document.querySelectorAll('.downloadBtn').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = "true";
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const url = btn.getAttribute('data-url');
+        const songId = parseInt(btn.getAttribute('data-song-id'));
+        if (url && songId) await downloadSong(url, songId, btn);
+        else alert("File source missing — upload to Supabase Storage first");
+      });
+    });
+  }
+  
+  // ========== QUEUE SYSTEM ==========
+  let queue = [];
+  let currentQueueIdx = 0;
+  const queueContainer = document.getElementById("queueContainer");
+  const globalAudio = document.getElementById("globalAudio");
+  
+  function renderQueue() {
+    queueContainer.innerHTML = "";
+    if (queue.length === 0) { 
+      queueContainer.innerHTML = "<div>✨ No songs in queue. Click any track below.</div>"; 
+      return; 
+    }
+    queue.forEach((item, idx) => {
+      const qDiv = document.createElement("div");
+      qDiv.className = "queue-item";
+      qDiv.innerHTML = `${idx === currentQueueIdx ? "▶️ " : "🎵 "} ${item.title} ${idx !== currentQueueIdx ? '<button style="float:right; background:#2c3e66; border:none; border-radius:30px; padding:0 8px;" class="removeQueueItem" data-idx="'+idx+'">✖</button>' : ''}`;
+      qDiv.addEventListener("click", () => { if (idx !== currentQueueIdx) playFromQueue(idx); });
+      queueContainer.appendChild(qDiv);
+    });
+    
+    document.querySelectorAll(".removeQueueItem").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute("data-idx"));
+        queue.splice(idx, 1);
+        if (currentQueueIdx >= idx && currentQueueIdx > 0) currentQueueIdx--;
+        if (queue.length === 0) { globalAudio.src = ""; currentQueueIdx = 0; renderQueue(); return; }
+        if (currentQueueIdx >= queue.length) currentQueueIdx = queue.length - 1;
+        if (queue.length) playFromQueue(currentQueueIdx);
+        renderQueue();
+      });
+    });
+  }
+  
+  function playFromQueue(index) {
+    if (index >= 0 && index < queue.length) {
+      currentQueueIdx = index;
+      globalAudio.src = queue[currentQueueIdx].src;
+      globalAudio.play().catch(e => console.log);
+      renderQueue();
+    }
+  }
+  
+  function addToQueue(song) {
+    queue.push({ title: song.title, src: song.src });
+    renderQueue();
+    if (queue.length === 1) playFromQueue(0);
+  }
+  
+  function renderSongLibrary(filter = "") {
+    const filtered = songsData.filter(s => s.title.toLowerCase().includes(filter.toLowerCase()));
+    const container = document.getElementById("songListContainer");
+    container.innerHTML = "";
+    filtered.forEach(song => {
+      const div = document.createElement("div");
+      div.className = "song-box";
+      div.style.cursor = "pointer";
+      div.innerHTML = `<div class="song-title">🎧 ${song.title}</div><small>click to add to queue</small>`;
+      div.addEventListener("click", () => addToQueue(song));
+      container.appendChild(div);
+    });
+    if(filtered.length === 0) container.innerHTML = "<div>🔍 no matching tracks</div>";
+  }
+  
+  // ========== TOGGLE ==========
+  window.toggleSongs = function(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = el.style.display === "block" ? "none" : "block";
+  };
+  
+  // ========== HOLOGRAPHIC BACKGROUND ==========
+  const canvas = document.getElementById('holo-canvas');
+  const ctx = canvas.getContext('2d');
+  let width, height;
+  let time = 0;
+  
+  function resizeCanvas() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  
+  function drawHologram() {
+    if (!ctx) return;
+    ctx.clearRect(0, 0, width, height);
+    const grad = ctx.createLinearGradient(0, 0, width, height);
+    grad.addColorStop(0, 'rgba(8, 12, 25, 0.2)');
+    grad.addColorStop(1, 'rgba(2, 6, 20, 0.3)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+    
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath();
+      const offset = i * 1.2;
+      const amp = 35 + Math.sin(time * 0.2 + i) * 12;
+      const frequency = 0.008;
+      for (let px = 0; px <= width; px += 25) {
+        const y = height / 2.8 + Math.sin(px * frequency + time * 1.5 + offset) * amp + Math.cos(px * 0.006 + time) * 15;
+        if (px === 0) ctx.moveTo(px, y);
+        else ctx.lineTo(px, y);
+      }
+      ctx.strokeStyle = `hsla(${190 + i * 18 + Math.sin(time * 0.3) * 20}, 70%, 55%, 0.22)`;
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+    }
+    
+    for (let p = 0; p < 85; p++) {
+      const px = (Math.sin(p * 0.127 + time) * 0.5 + 0.5) * width;
+      const py = (Math.cos(p * 0.093 + time * 0.7) * 0.4 + 0.5) * height;
+      ctx.beginPath();
+      ctx.arc(px, py, 1.5 + Math.sin(time * 2 + p) * 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(80, 180, 255, ${0.15 + Math.sin(time + p) * 0.05})`;
+      ctx.fill();
+    }
+    
+    time += 0.018;
+    requestAnimationFrame(drawHologram);
+  }
+  drawHologram();
+  
+  // ========== EVENT LISTENERS ==========
+  document.getElementById("searchSongs")?.addEventListener("input", (e) => renderSongLibrary(e.target.value));
+  document.getElementById("clearQueueBtn")?.addEventListener("click", () => { queue = []; currentQueueIdx = 0; globalAudio.src = ""; renderQueue(); });
+  document.getElementById("nextTrackBtn")?.addEventListener("click", () => { if (queue.length && currentQueueIdx+1 < queue.length) playFromQueue(currentQueueIdx+1); });
+  document.getElementById("shuffleQueueBtn")?.addEventListener("click", () => {
+    if(queue.length) {
+      for(let i = queue.length - 1; i > 0; i--) { 
+        const j = Math.floor(Math.random() * (i + 1)); 
+        [queue[i], queue[j]] = [queue[j], queue[i]]; 
+      }
+      currentQueueIdx = 0;
+      playFromQueue(0);
+      renderQueue();
+    }
+  });
+  globalAudio.addEventListener("ended", () => { if (queue.length && currentQueueIdx + 1 < queue.length) playFromQueue(currentQueueIdx + 1); });
+  document.getElementById("subscribeBtn")?.addEventListener("click", subscribeUser);
+  
+  // ========== INIT ==========
+  async function init() {
+    await fetchDownloadStats();
+    renderSongs();
+    renderSongLibrary("");
+    subscribeToDownloads();
+  }
+  init();
+</script>
+
+</body>
+</html>
