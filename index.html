@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -161,6 +161,23 @@
       font-size: 10px;
       z-index: 999;
     }
+    .loading-spinner {
+      display: inline-block;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .status-message {
+      padding: 10px 15px;
+      border-radius: 20px;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+    }
+    .status-success { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+    .status-error { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+    .status-info { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
     @media (max-width: 700px) { .wrapper { padding: 0.8rem; } .section-title { font-size: 1.5rem; } }
   </style>
 </head>
@@ -193,6 +210,7 @@
 
   <section id="music">
     <h2 class="section-title">🎵 MUSIC CATALOG</h2>
+    <div id="statusMessage"></div>
     <div id="globalCounter">📀 Total Downloads: 0</div>
 
     <div class="category" onclick="toggleSongs('ugandaSongs')">🇺🇬 UGANDA HITS ▾</div>
@@ -259,33 +277,100 @@
 
 <!-- Main App Script -->
 <script>
-  // ========== ✅ FIXED: CORRECT SUPABASE INITIALIZATION ==========
+  // ========== ✅ SUPABASE INITIALIZATION ==========
   const SUPABASE_URL = "https://fdpdhrrcvgpdgemhaccs.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkcGRocnJjdmdwZGdlbWhhY2NzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjc3MzEsImV4cCI6MjA5MzcwMzczMX0.kupE8Gl0RLsVDa2FtEBTmxk7rCEGKqdcRul4guNsQpg";
-  
-  // ✅ FIXED: Use window.supabase, not redefining itself
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkcGRocnJjdmdwZGdlbWhhY2NzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjc3MzEsImV4cCI6MjA5MzcwMzcyMX0.4GzPg0aXzN_bpn_i8j5vN6mK2wL9qO3rS2tU1vW4xYz";
+  const STORAGE_BUCKET = "music-files";
+
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   console.log("✅ Supabase connected");
 
-  // ========== SONG DATABASE — REPLACE WITH SUPABASE STORAGE URLs ==========
-  // ⚠️ IMPORTANT: Upload your MP3s to Supabase Storage first!
-  // Then replace these URLs with your actual public storage URLs:
-  // https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/YOUR_SONG.mp3
-  
-  const songsData = [
-    { id: 1, title: "Emazarao - Richo Ranking", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/emazarao.mp3" },
-    { id: 2, title: "Edokiyo - Rody Gavana ft Canis Odd", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/edokiyo.mp3" },
-    { id: 3, title: "Akiyo - Billy Basil", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/akiyo.mp3" },
-    { id: 4, title: "Onkosa - Mudra D Viral", category: "hiphop", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/onkosa.mp3" },
-    { id: 5, title: "Ayi Ayi - Mudra D Viral", category: "hiphop", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/ayi_ayi.mp3" }
-  ];
+  // ========== CATEGORIZATION RULES ==========
+  const CATEGORY_RULES = {
+    uganda: ["emazarao", "edokiyo", "akiyo", "ssematimba", "mpindi"],
+    hiphop: ["onkosa", "ayi_ayi", "mudra", "viral", "hiphop", "rap"]
+  };
+
+  function categorizeFile(filename) {
+    const lower = filename.toLowerCase();
+    for (const [cat, keywords] of Object.entries(CATEGORY_RULES)) {
+      if (keywords.some(kw => lower.includes(kw))) return cat;
+    }
+    return "uganda"; // default
+  }
+
+  // ========== SONG DATABASE — DYNAMICALLY LOADED ==========
+  let songsData = [];
+
+  // ========== STATUS MESSAGE HANDLER ==========
+  function showStatus(message, type = "info") {
+    const el = document.getElementById("statusMessage");
+    el.innerHTML = `<div class="status-message status-${type}">${message}</div>`;
+    if (type !== "error") setTimeout(() => el.innerHTML = "", 4000);
+  }
+
+  // ========== ✅ FETCH SONGS FROM SUPABASE STORAGE ==========
+  async function fetchSongsFromStorage() {
+    try {
+      showStatus("🔄 Loading songs from storage...", "info");
+      
+      const { data, error } = await supabaseClient.storage
+        .from(STORAGE_BUCKET)
+        .list("", { limit: 100 });
+
+      if (error) throw new Error(error.message);
+
+      songsData = [];
+      let id = 1;
+
+      for (const file of data) {
+        if (!file.name.match(/\.(mp3|wav|m4a|ogg|flac)$/i)) continue;
+
+        const { data: { publicUrl } } = supabaseClient.storage
+          .from(STORAGE_BUCKET)
+          .getPublicUrl(file.name);
+
+        const title = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+        const category = categorizeFile(file.name);
+
+        songsData.push({
+          id: id++,
+          title: title.charAt(0).toUpperCase() + title.slice(1),
+          category: category,
+          src: publicUrl,
+          filename: file.name,
+          size: file.metadata?.size || 0
+        });
+      }
+
+      console.log(`✅ Loaded ${songsData.length} songs from storage`);
+      showStatus(`✅ ${songsData.length} songs loaded successfully!`, "success");
+      
+    } catch (err) {
+      console.error("❌ Storage fetch error:", err);
+      showStatus(`❌ Error loading songs: ${err.message}`, "error");
+      useFallbackSongs();
+    }
+  }
+
+  // ========== FALLBACK SONGS (if storage is empty) ==========
+  function useFallbackSongs() {
+    songsData = [
+      { id: 1, title: "Emazarao - Richo Ranking", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/emazarao.mp3" },
+      { id: 2, title: "Edokiyo - Rody Gavana ft Canis Odd", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/edokiyo.mp3" },
+      { id: 3, title: "Akiyo - Billy Basil", category: "uganda", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/akiyo.mp3" },
+      { id: 4, title: "Onkosa - Mudra D Viral", category: "hiphop", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/onkosa.mp3" },
+      { id: 5, title: "Ayi Ayi - Mudra D Viral", category: "hiphop", src: "https://fdpdhrrcvgpdgemhaccs.supabase.co/storage/v1/object/public/music-files/ayi_ayi.mp3" }
+    ];
+    console.log("⚠️ Using fallback songs");
+  }
 
   // ========== DOWNLOAD COUNTS STATE ==========
   let downloadCounts = {};
   let totalDownloads = 0;
   const globalCounterSpan = document.getElementById("globalCounter");
 
-  // ========== ✅ FIXED: SUPABASE FETCH ==========
+  // ========== ✅ SUPABASE FETCH DOWNLOAD STATS ==========
   async function fetchDownloadStats() {
     try {
       const { data, error } = await supabaseClient
@@ -293,7 +378,7 @@
         .select('song_id, download_count');
       
       if (error) {
-        console.warn("Table not ready, using localStorage:", error);
+        console.warn("⚠️ Table not ready, using localStorage:", error);
         const saved = localStorage.getItem('teso_downloads');
         if (saved) {
           downloadCounts = JSON.parse(saved);
@@ -311,7 +396,7 @@
     }
   }
 
-  // ========== ✅ FIXED: INCREMENT DOWNLOAD ==========
+  // ========== ✅ INCREMENT DOWNLOAD ==========
   async function incrementDownload(songId) {
     downloadCounts[songId] = (downloadCounts[songId] || 0) + 1;
     totalDownloads++;
@@ -326,7 +411,7 @@
     if (error) console.error("Supabase update failed:", error);
   }
 
-  // ========== ✅ FIXED: SUBSCRIBE FUNCTION ==========
+  // ========== SUBSCRIBE FUNCTION ==========
   async function subscribeUser() {
     const email = document.getElementById("subEmail").value;
     if (!email) {
@@ -335,7 +420,6 @@
     }
     
     try {
-      // First check if subscribers table exists — if not, create it
       const { error } = await supabaseClient
         .from("subscribers")
         .insert([{ email, subscribed_at: new Date().toISOString() }]);
@@ -401,8 +485,9 @@
       
       songBox.innerHTML = `
         <div class="song-title">🎵 ${song.title}</div>
-        <audio controls preload="metadata">
+        <audio controls preload="metadata" style="width: 100%; max-width: 400px;">
           <source src="${song.src}" type="audio/mpeg">
+          Your browser does not support the audio element.
         </audio>
         <div class="download-section">
           <button class="downloadBtn" data-song-id="${song.id}" data-url="${song.src}">⬇️ Download</button>
@@ -410,9 +495,16 @@
           <span class="count">${currentCount}</span>
         </div>
       `;
+
+      // Add error handling to audio
+      const audio = songBox.querySelector('audio');
+      audio.addEventListener('error', (e) => {
+        console.error(`❌ Error loading ${song.title}:`, e);
+        audio.parentElement.innerHTML += `<small style="color: #ff6b6b;">⚠️ Error loading audio</small>`;
+      });
       
       if (song.category === 'uganda') ugandaContainer.appendChild(songBox);
-      else hiphopContainer.appendChild(songBox);
+      else if (song.category === 'hiphop') hiphopContainer.appendChild(songBox);
     });
     
     bindDownloadButtons();
@@ -425,7 +517,7 @@
     
     try {
       const response = await fetch(url);
-      if (!response.ok) throw new Error("Network error");
+      if (!response.ok) throw new Error("Network error: " + response.status);
       
       const reader = response.body.getReader();
       const contentLength = +response.headers.get("Content-Length");
@@ -448,7 +540,7 @@
       await incrementDownload(songId);
       
     } catch (err) {
-      console.warn("Download simulation:", err);
+      console.warn("Download error:", err);
       await incrementDownload(songId);
     }
   }
@@ -472,6 +564,11 @@
   let currentQueueIdx = 0;
   const queueContainer = document.getElementById("queueContainer");
   const globalAudio = document.getElementById("globalAudio");
+
+  globalAudio.addEventListener('error', (e) => {
+    console.error("❌ Audio playback error:", e);
+    showStatus("❌ Error playing audio. Try next track.", "error");
+  });
   
   function renderQueue() {
     queueContainer.innerHTML = "";
@@ -482,7 +579,7 @@
     queue.forEach((item, idx) => {
       const qDiv = document.createElement("div");
       qDiv.className = "queue-item";
-      qDiv.innerHTML = `${idx === currentQueueIdx ? "▶️ " : "🎵 "} ${item.title} ${idx !== currentQueueIdx ? '<button style="float:right; background:#2c3e66; border:none; border-radius:30px; padding:0 8px;" class="removeQueueItem" data-idx="'+idx+'">✖</button>' : ''}`;
+      qDiv.innerHTML = `${idx === currentQueueIdx ? "▶️ " : "🎵 "} ${item.title} ${idx !== currentQueueIdx ? '<button class="removeQueueItem" data-idx="' + idx + '" style="float:right; background:#2c3e66; border:none; border-radius:30px; padding: 2px 8px; color: #ff6b6b; cursor: pointer;">✕</button>' : ''}`;
       qDiv.addEventListener("click", () => { if (idx !== currentQueueIdx) playFromQueue(idx); });
       queueContainer.appendChild(qDiv);
     });
@@ -505,7 +602,10 @@
     if (index >= 0 && index < queue.length) {
       currentQueueIdx = index;
       globalAudio.src = queue[currentQueueIdx].src;
-      globalAudio.play().catch(e => console.log);
+      globalAudio.play().catch(e => {
+        console.error("Play error:", e);
+        showStatus("❌ Cannot play this track", "error");
+      });
       renderQueue();
     }
   }
@@ -610,10 +710,13 @@
   
   // ========== INIT ==========
   async function init() {
+    console.log("🚀 Initializing app...");
+    await fetchSongsFromStorage();
     await fetchDownloadStats();
     renderSongs();
     renderSongLibrary("");
     subscribeToDownloads();
+    console.log("✅ App initialized!");
   }
   init();
 </script>
